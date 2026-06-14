@@ -201,7 +201,7 @@
                   <th>Persona</th>
                   <th>Concepto</th>
                   <th>Importe</th>
-                  <th></th>
+                  <th>Acción</th>
                 </tr>
               </thead>
               <tbody id="transactionsBody"></tbody>
@@ -239,7 +239,8 @@
     }
 
     function getEventIdFromUrl() {
-      return new URLSearchParams(window.location.search).get('event') || '';
+      const params = new URLSearchParams(window.location.search);
+      return params.get('event') || '';
     }
 
     function buildShareUrl(eventId) {
@@ -288,12 +289,19 @@
         obj.balance = round2(obj.net - sharePerFamily);
       });
 
-      return { totalExpenses: round2(totalExpenses), totalIncome: round2(totalIncome), netCost: round2(netCost), sharePerFamily: round2(sharePerFamily), byFamily: familyMap };
+      return {
+        totalExpenses: round2(totalExpenses),
+        totalIncome: round2(totalIncome),
+        netCost: round2(netCost),
+        sharePerFamily: round2(sharePerFamily),
+        byFamily: familyMap
+      };
     }
 
     function calculateTransfers(balanceMap) {
       const creditors = [];
       const debtors = [];
+
       Object.entries(balanceMap).forEach(([family, values]) => {
         if (values.balance > 0.009) creditors.push({ family, amount: round2(values.balance) });
         if (values.balance < -0.009) debtors.push({ family, amount: round2(Math.abs(values.balance)) });
@@ -301,14 +309,18 @@
 
       const transfers = [];
       let i = 0, j = 0;
+
       while (i < debtors.length && j < creditors.length) {
         const pay = round2(Math.min(debtors[i].amount, creditors[j].amount));
         if (pay > 0) transfers.push({ from: debtors[i].family, to: creditors[j].family, amount: pay });
+
         debtors[i].amount = round2(debtors[i].amount - pay);
         creditors[j].amount = round2(creditors[j].amount - pay);
+
         if (debtors[i].amount <= 0.009) i++;
         if (creditors[j].amount <= 0.009) j++;
       }
+
       return transfers;
     }
 
@@ -355,6 +367,28 @@
       });
     }
 
+    async function deleteTransaction(transactionId) {
+      if (!state.event) return;
+      const ok = window.confirm('¿Seguro que quieres borrar este movimiento?');
+      if (!ok) return;
+
+      const msg = document.getElementById('transactionMessage');
+      msg.textContent = 'Borrando movimiento...';
+
+      try {
+        const result = await apiPost({
+          action: 'deleteTransaction',
+          eventId: state.event.eventId,
+          transactionId
+        });
+        if (!result.ok) throw new Error(result.error || 'No se pudo borrar el movimiento');
+        msg.textContent = 'Movimiento borrado correctamente.';
+        await loadEvent(state.event.eventId);
+      } catch (error) {
+        msg.textContent = 'Error al borrar: ' + error.message;
+      }
+    }
+
     function renderEvent() {
       const hasEvent = !!state.event;
       toggleEventUI(hasEvent);
@@ -374,6 +408,7 @@
       });
 
       populateFamilySelect(state.families);
+
       const summary = calculateSummary(state.transactions, state.families);
       document.getElementById('kpiExpenses').textContent = money.format(summary.totalExpenses);
       document.getElementById('kpiIncome').textContent = money.format(summary.totalIncome);
@@ -417,18 +452,30 @@
       if (!state.transactions.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="subtle">Todavía no hay movimientos para este evento.</td></tr>';
       } else {
-        state.transactions.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).forEach(t => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${t.date}</td>
-            <td><span class="pill ${t.type === 'expense' ? 'pill-expense' : 'pill-income'}">${t.type === 'expense' ? 'Gasto' : 'Ingreso'}</span></td>
-            <td>${t.family}</td>
-            <td>${t.concept}</td>
-            <td>${money.format(Number(t.amount || 0))}</td>
-            <td></td>
-          `;
-          tbody.appendChild(tr);
-        });
+        state.transactions
+          .slice()
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+          .forEach(t => {
+            const tr = document.createElement('tr');
+
+            const actionBtn = document.createElement('button');
+            actionBtn.type = 'button';
+            actionBtn.className = 'btn btn-danger';
+            actionBtn.textContent = 'Borrar';
+            actionBtn.addEventListener('click', () => deleteTransaction(t.transactionId));
+
+            tr.innerHTML = `
+              <td>${t.date}</td>
+              <td><span class="pill ${t.type === 'expense' ? 'pill-expense' : 'pill-income'}">${t.type === 'expense' ? 'Gasto' : 'Ingreso'}</span></td>
+              <td>${t.family}</td>
+              <td>${t.concept}</td>
+              <td>${money.format(Number(t.amount || 0))}</td>
+              <td class="action-cell"></td>
+            `;
+
+            tr.querySelector('.action-cell').appendChild(actionBtn);
+            tbody.appendChild(tr);
+          });
       }
     }
 
@@ -445,11 +492,12 @@
         clearCurrentEvent();
         return;
       }
-      if (API_URL === 'YOUR_APPS_SCRIPT_URL') {
+      if (API_URL === 'https://script.google.com/macros/s/AKfycbxTcz9NgC3_4uNms5ElRSe4tUXFbDZ04dXyCZOq29rmgCXHdPojZOtFgB7m9W-PLHWA/exec') {
         throw new Error('Debes configurar la URL de Apps Script en el HTML antes de usar la app real.');
       }
       const data = await apiGet('getEvent', { eventId });
       if (!data.ok) throw new Error(data.error || 'No se pudo cargar el evento');
+
       state.event = data.event;
       state.families = data.families || [];
       state.transactions = data.transactions || [];
@@ -459,24 +507,33 @@
 
     document.getElementById('createEventForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      const families = uniqueNonEmptyLines(form.get('families'));
+
+      const formEl = event.currentTarget;
+      const formData = new FormData(formEl);
+      const families = uniqueNonEmptyLines(formData.get('families'));
+
       const payload = {
         action: 'createEvent',
-        name: String(form.get('name') || '').trim(),
-        date: String(form.get('date') || '').trim(),
+        name: String(formData.get('name') || '').trim(),
+        date: String(formData.get('date') || '').trim(),
         families
       };
+
       const msg = document.getElementById('createEventMessage');
       if (families.length < 2) {
         msg.textContent = 'Debes indicar al menos dos organizadores.';
         return;
       }
+
       msg.textContent = 'Creando evento...';
+
       try {
-        if (API_URL === 'YOUR_APPS_SCRIPT_URL') throw new Error('Configura primero la URL de Apps Script.');
+        if (API_URL === 'https://script.google.com/macros/s/AKfycbxTcz9NgC3_4uNms5ElRSe4tUXFbDZ04dXyCZOq29rmgCXHdPojZOtFgB7m9W-PLHWA/exec') throw new Error('Configura primero la URL de Apps Script.');
         const result = await apiPost(payload);
         if (!result.ok) throw new Error(result.error || 'No se pudo crear el evento');
+
+        formEl.reset();
+        document.getElementById('eventDate').valueAsDate = new Date();
         msg.textContent = 'Evento creado correctamente.';
         await loadEvent(result.eventId);
       } catch (error) {
@@ -487,22 +544,29 @@
     document.getElementById('transactionForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!state.event) return;
-      const form = new FormData(event.currentTarget);
+
+      const formEl = event.currentTarget;
+      const formData = new FormData(formEl);
+
       const payload = {
         action: 'addTransaction',
         eventId: state.event.eventId,
-        type: String(form.get('type') || '').trim(),
-        amount: Number(form.get('amount') || 0),
-        family: String(form.get('family') || '').trim(),
-        date: String(form.get('date') || '').trim(),
-        concept: String(form.get('concept') || '').trim()
+        type: String(formData.get('type') || '').trim(),
+        amount: Number(formData.get('amount') || 0),
+        family: String(formData.get('family') || '').trim(),
+        date: String(formData.get('date') || '').trim(),
+        concept: String(formData.get('concept') || '').trim()
       };
+
       const msg = document.getElementById('transactionMessage');
       msg.textContent = 'Guardando movimiento...';
+
       try {
         const result = await apiPost(payload);
         if (!result.ok) throw new Error(result.error || 'No se pudo guardar el movimiento');
-        event.currentTarget.reset();
+
+        formEl.reset();
+        populateFamilySelect(state.families);
         document.getElementById('transactionDate').valueAsDate = new Date();
         msg.textContent = 'Movimiento guardado correctamente.';
         await loadEvent(state.event.eventId);
@@ -526,7 +590,11 @@
     document.getElementById('refreshBtn').addEventListener('click', async () => {
       const eventId = state.event?.eventId || getEventIdFromUrl();
       if (!eventId) return;
-      try { await loadEvent(eventId); } catch (error) { alert(error.message); }
+      try {
+        await loadEvent(eventId);
+      } catch (error) {
+        alert(error.message);
+      }
     });
 
     document.getElementById('resetViewBtn').addEventListener('click', () => {
@@ -538,6 +606,7 @@
 
     setThemeToggle();
     renderEvent();
+
     const initialEventId = getEventIdFromUrl();
     if (initialEventId) {
       loadEvent(initialEventId).catch(error => {
