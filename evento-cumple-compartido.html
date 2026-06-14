@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestor de evento compartido</title>
+  <meta name="description" content="Aplicación web ligera para gestionar eventos compartidos, gastos, ingresos y liquidaciones usando GitHub Pages + Google Sheets + Apps Script." />
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="light"] {
+      --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+      --text-sm: clamp(0.875rem, 0.8rem + 0.35vw, 1rem);
+      --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+      --text-lg: clamp(1.125rem, 1rem + 0.75vw, 1.5rem);
+      --text-xl: clamp(1.5rem, 1.2rem + 1.25vw, 2.25rem);
+      --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem; --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem; --space-12: 3rem;
+      --color-bg: #f7f6f2; --color-surface: #f9f8f5; --color-surface-2: #fbfbf9; --color-surface-offset: #f3f0ec; --color-border: #d4d1ca; --color-text: #28251d; --color-text-muted: #7a7974; --color-primary: #01696f; --color-primary-hover: #0c4e54; --color-primary-highlight: #cedcd8; --color-success: #437a22; --color-error: #a12c7b; --color-warning: #964219; --radius-sm: 0.375rem; --radius-md: 0.5rem; --radius-lg: 0.75rem; --radius-xl: 1rem; --shadow-sm: 0 1px 2px rgba(0,0,0,0.06); --shadow-md: 0 4px 12px rgba(0,0,0,0.08); --font-body: 'Satoshi', Inter, sans-serif;
+    }
+    [data-theme="dark"] {
+      --color-bg: #171614; --color-surface: #1c1b19; --color-surface-2: #201f1d; --color-surface-offset: #1d1c1a; --color-border: #393836; --color-text: #cdccca; --color-text-muted: #797876; --color-primary: #4f98a3; --color-primary-hover: #227f8b; --color-primary-highlight: #313b3b; --color-success: #6daa45; --color-error: #d163a7; --color-warning: #bb653b; --shadow-sm: 0 1px 2px rgba(0,0,0,0.2); --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+    body { margin: 0; font-family: var(--font-body); font-size: var(--text-base); line-height: 1.5; color: var(--color-text); background: var(--color-bg); }
+    button, input, select { font: inherit; }
+    .app { max-width: 1200px; margin: 0 auto; padding: var(--space-4); }
+    .topbar { display: flex; gap: var(--space-4); justify-content: space-between; align-items: center; margin-bottom: var(--space-6); flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: var(--space-3); }
+    .logo { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 40%, white)); display: grid; place-items: center; color: white; box-shadow: var(--shadow-md); }
+    .brand h1 { margin: 0; font-size: var(--text-xl); }
+    .brand p { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+    .actions { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+    .btn { border: 1px solid transparent; border-radius: var(--radius-md); padding: 0.8rem 1rem; min-height: 44px; cursor: pointer; }
+    .btn-primary { background: var(--color-primary); color: white; }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-secondary { background: var(--color-surface); color: var(--color-text); border-color: var(--color-border); }
+    .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-4); }
+    .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-xl); padding: var(--space-4); box-shadow: var(--shadow-sm); }
+    .card h2 { margin-top: 0; margin-bottom: var(--space-4); font-size: var(--text-lg); }
+    .muted { color: var(--color-text-muted); }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-4); }
+    .kpi { background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); }
+    .kpi .label { font-size: var(--text-sm); color: var(--color-text-muted); }
+    .kpi .value { font-size: var(--text-lg); font-weight: 700; margin-top: var(--space-2); }
+    form { display: grid; gap: var(--space-3); }
+    label { font-size: var(--text-sm); font-weight: 600; }
+    input, select { width: 100%; padding: 0.8rem 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-surface-2); color: var(--color-text); min-height: 44px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+    th, td { text-align: left; padding: 0.85rem 0.7rem; border-bottom: 1px solid var(--color-border); }
+    th { position: sticky; top: 0; background: var(--color-surface); }
+    .pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 0.3rem 0.6rem; font-size: var(--text-xs); font-weight: 700; }
+    .pill-expense { background: color-mix(in srgb, var(--color-warning) 16%, transparent); color: var(--color-warning); }
+    .pill-income { background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--color-success); }
+    .settlement { display: grid; gap: var(--space-3); }
+    .settlement-item { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+    .footer-note { margin-top: var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted); }
+    .notice { padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-primary-highlight); font-size: var(--text-sm); }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+    @media (max-width: 920px) { .grid, .row, .kpis { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <a href="#main" class="sr-only">Saltar al contenido</a>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Logo"><path d="M4 7h16M6 7l1 11h10l1-11M9 7V5a3 3 0 0 1 6 0v2"/></svg>
+        </div>
+        <div>
+          <h1>Gestor de evento compartido</h1>
+          <p>Base para GitHub Pages + Google Sheets + Apps Script</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary" data-theme-toggle aria-label="Cambiar tema">🌙</button>
+        <button class="btn btn-primary" id="reloadBtn">Recargar datos</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="kpis" aria-label="Resumen">
+        <article class="kpi"><div class="label">Gastos</div><div class="value" id="kpiExpenses">0,00 €</div></article>
+        <article class="kpi"><div class="label">Ingresos</div><div class="value" id="kpiIncome">0,00 €</div></article>
+        <article class="kpi"><div class="label">Coste neto</div><div class="value" id="kpiNet">0,00 €</div></article>
+        <article class="kpi"><div class="label">Parte por familia</div><div class="value" id="kpiShare">0,00 €</div></article>
+      </section>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Nuevo movimiento</h2>
+          <div class="notice">Antes de usar la app, sustituye <span class="code">YOUR_APPS_SCRIPT_URL</span> por la URL de tu implementación de Apps Script.</div>
+          <form id="transactionForm">
+            <div>
+              <label for="eventId">ID del evento</label>
+              <input id="eventId" name="eventId" placeholder="ej. EVT-001" required />
+            </div>
+            <div class="row">
+              <div>
+                <label for="type">Tipo</label>
+                <select id="type" name="type">
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                </select>
+              </div>
+              <div>
+                <label for="amount">Importe</label>
+                <input id="amount" name="amount" type="number" step="0.01" min="0" required />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="family">Familia</label>
+                <select id="family" name="family">
+                  <option>Ana</option>
+                  <option>Carmen</option>
+                  <option>Celeste</option>
+                  <option>Abi</option>
+                  <option>Jorge</option>
+                  <option>Raúl</option>
+                </select>
+              </div>
+              <div>
+                <label for="date">Fecha</label>
+                <input id="date" name="date" type="date" required />
+              </div>
+            </div>
+            <div>
+              <label for="concept">Concepto</label>
+              <input id="concept" name="concept" placeholder="Comida, tarta, detalles, aportación..." required />
+            </div>
+            <button class="btn btn-primary" type="submit">Guardar movimiento</button>
+          </form>
+          <p class="footer-note" id="formMessage">La app enviará el movimiento a Google Sheets mediante Apps Script.</p>
+        </section>
+
+        <section class="card">
+          <h2>Liquidación actual</h2>
+          <div id="settlementList" class="settlement"></div>
+          <p class="footer-note">Las familias con saldo positivo deben cobrar; las que tengan saldo negativo deben aportar hasta igualar la parte común.</p>
+        </section>
+      </div>
+
+      <section class="card" style="margin-top: 1rem;">
+        <h2>Movimientos</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Familia</th>
+                <th>Concepto</th>
+                <th>Importe</th>
+              </tr>
+            </thead>
+            <tbody id="transactionsBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const API_URL = 'YOUR_APPS_SCRIPT_URL';
+    const money = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+    const familiesDefault = ['Ana', 'Carmen', 'Celeste', 'Abi', 'Jorge', 'Raúl'];
+    const state = { eventId: 'EVT-001', transactions: [] };
+
+    document.getElementById('date').valueAsDate = new Date();
+    document.getElementById('eventId').value = state.eventId;
+
+    function setThemeToggle() {
+      const btn = document.querySelector('[data-theme-toggle]');
+      let current = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', current);
+      btn.textContent = current === 'dark' ? '☀️' : '🌙';
+      btn.addEventListener('click', () => {
+        current = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', current);
+        btn.textContent = current === 'dark' ? '☀️' : '🌙';
+      });
+    }
+
+    function calculateSummary(transactions, families = familiesDefault) {
+      const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+      const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+      const netCost = totalExpenses - totalIncome;
+      const sharePerFamily = families.length ? netCost / families.length : 0;
+
+      const byFamily = Object.fromEntries(families.map(name => [name, { expenses: 0, income: 0, net: 0, balance: 0 }]));
+      transactions.forEach(t => {
+        if (!byFamily[t.family]) byFamily[t.family] = { expenses: 0, income: 0, net: 0, balance: 0 };
+        if (t.type === 'expense') byFamily[t.family].expenses += Number(t.amount);
+        if (t.type === 'income') byFamily[t.family].income += Number(t.amount);
+      });
+      Object.entries(byFamily).forEach(([family, obj]) => {
+        obj.net = obj.expenses - obj.income;
+        obj.balance = obj.net - sharePerFamily;
+      });
+
+      return { totalExpenses, totalIncome, netCost, sharePerFamily, byFamily };
+    }
+
+    function renderSummary() {
+      const summary = calculateSummary(state.transactions);
+      document.getElementById('kpiExpenses').textContent = money.format(summary.totalExpenses);
+      document.getElementById('kpiIncome').textContent = money.format(summary.totalIncome);
+      document.getElementById('kpiNet').textContent = money.format(summary.netCost);
+      document.getElementById('kpiShare').textContent = money.format(summary.sharePerFamily);
+
+      const settlementList = document.getElementById('settlementList');
+      settlementList.innerHTML = '';
+      Object.entries(summary.byFamily).forEach(([family, values]) => {
+        const item = document.createElement('div');
+        item.className = 'settlement-item';
+        const status = values.balance >= 0 ? 'Debe cobrar' : 'Debe aportar';
+        item.innerHTML = `
+          <div>
+            <strong>${family}</strong><br>
+            <span class="muted">Gastos: ${money.format(values.expenses)} · Ingresos: ${money.format(values.income)}</span>
+          </div>
+          <div style="text-align:right;">
+            <div>${status}</div>
+            <strong>${money.format(Math.abs(values.balance))}</strong>
+          </div>
+        `;
+        settlementList.appendChild(item);
+      });
+    }
+
+    function renderTransactions() {
+      const tbody = document.getElementById('transactionsBody');
+      tbody.innerHTML = '';
+      if (!state.transactions.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="muted">Todavía no hay movimientos cargados.</td></tr>';
+        return;
+      }
+      state.transactions
+        .slice()
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+        .forEach(t => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${t.date}</td>
+            <td><span class="pill ${t.type === 'expense' ? 'pill-expense' : 'pill-income'}">${t.type === 'expense' ? 'Gasto' : 'Ingreso'}</span></td>
+            <td>${t.family}</td>
+            <td>${t.concept}</td>
+            <td>${money.format(Number(t.amount))}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+    }
+
+    async function fetchJSON(url, options = {}) {
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error('Error HTTP ' + response.status);
+      return response.json();
+    }
+
+    async function loadTransactions() {
+      if (API_URL === 'YOUR_APPS_SCRIPT_URL') {
+        state.transactions = [
+          { date: '2026-06-14', type: 'expense', family: 'Ana', concept: 'Comida', amount: 140 },
+          { date: '2026-06-14', type: 'expense', family: 'Celeste', concept: 'Tartas', amount: 32 },
+          { date: '2026-06-14', type: 'expense', family: 'Carmen', concept: 'Detalles', amount: 20 },
+          { date: '2026-06-14', type: 'income', family: 'Carmen', concept: 'Aportaciones asistentes', amount: 84 },
+          { date: '2026-06-14', type: 'income', family: 'Ana', concept: 'Aportaciones asistentes', amount: 24 },
+          { date: '2026-06-14', type: 'income', family: 'Raúl', concept: 'Aportaciones asistentes', amount: 30 }
+        ];
+        renderTransactions();
+        renderSummary();
+        return;
+      }
+
+      const eventId = document.getElementById('eventId').value.trim();
+      state.eventId = eventId;
+      const data = await fetchJSON(`${API_URL}?action=listTransactions&eventId=${encodeURIComponent(eventId)}`);
+      state.transactions = data.transactions || [];
+      renderTransactions();
+      renderSummary();
+    }
+
+    async function saveTransaction(payload) {
+      if (API_URL === 'YOUR_APPS_SCRIPT_URL') {
+        state.transactions.push(payload);
+        renderTransactions();
+        renderSummary();
+        return { ok: true, offline: true };
+      }
+      return fetchJSON(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'addTransaction', ...payload })
+      });
+    }
+
+    document.getElementById('transactionForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const payload = Object.fromEntries(form.entries());
+      payload.amount = Number(payload.amount);
+      payload.eventId = payload.eventId.trim();
+      document.getElementById('formMessage').textContent = 'Guardando movimiento...';
+      try {
+        await saveTransaction(payload);
+        document.getElementById('formMessage').textContent = 'Movimiento guardado correctamente.';
+        event.currentTarget.reset();
+        document.getElementById('date').valueAsDate = new Date();
+        document.getElementById('eventId').value = payload.eventId;
+        await loadTransactions();
+      } catch (error) {
+        document.getElementById('formMessage').textContent = 'Error al guardar: ' + error.message;
+      }
+    });
+
+    document.getElementById('reloadBtn').addEventListener('click', loadTransactions);
+
+    setThemeToggle();
+    loadTransactions();
+  </script>
+</body>
+</html>
