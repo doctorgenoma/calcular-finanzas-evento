@@ -492,7 +492,7 @@
         clearCurrentEvent();
         return;
       }
-      if (API_URL === 'https://script.google.com/macros/s/AKfycbxTcz9NgC3_4uNms5ElRSe4tUXFbDZ04dXyCZOq29rmgCXHdPojZOtFgB7m9W-PLHWA/exec') {
+      if (API_URL === 'YOUR_APPS_SCRIPT_URL') {
         throw new Error('Debes configurar la URL de Apps Script en el HTML antes de usar la app real.');
       }
       const data = await apiGet('getEvent', { eventId });
@@ -528,7 +528,7 @@
       msg.textContent = 'Creando evento...';
 
       try {
-        if (API_URL === 'https://script.google.com/macros/s/AKfycbxTcz9NgC3_4uNms5ElRSe4tUXFbDZ04dXyCZOq29rmgCXHdPojZOtFgB7m9W-PLHWA/exec') throw new Error('Configura primero la URL de Apps Script.');
+        if (API_URL === 'YOUR_APPS_SCRIPT_URL') throw new Error('Configura primero la URL de Apps Script.');
         const result = await apiPost(payload);
         if (!result.ok) throw new Error(result.error || 'No se pudo crear el evento');
 
